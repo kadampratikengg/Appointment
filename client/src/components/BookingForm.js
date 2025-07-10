@@ -76,7 +76,7 @@ function BookingForm() {
 
   return (
     <div className='booking-form-container'>
-      <h2 className='text-2xl font-semibold mb-4'>Book an Appointment</h2>
+      <h2 className='text-2xl font-semibold mb-4'>Book Appointment</h2>
       {error && <p className='text-red-500 mb-4'>{error}</p>}
       {success && (
         <div className='fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white p-4 rounded-md shadow-lg'>
@@ -188,7 +188,7 @@ function BookingForm() {
           rel='noopener noreferrer'
           className='inline-flex items-center px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600'
         >
-          Contact Us on WhatsApp
+          {/* Contact Us on WhatsApp */}
         </a>
       </div>
     </div>

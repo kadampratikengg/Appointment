@@ -24,8 +24,8 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
       const response = await axios.get(`${API_URL}/appointments`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      // console.log('Fetched appointments:', response.data);
-      // setLocalAppointments(response.data);
+      console.log('Fetched appointments:', response.data); // Debug log
+      setLocalAppointments(response.data); // Update local state with fetched data
     } catch (err) {
       console.error('Error fetching appointments:', err);
       alert('Failed to fetch appointments: ' + (err.message || 'Unknown error'));
@@ -115,7 +115,7 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
     } catch (err) {
       if (err.response?.status === 404) {
         alert('Appointment not found. It may have been deleted.');
-        effectiveFetchAppointments();
+        await localFetchAppointments();
         return false;
       }
       console.error('Validation error:', err);
@@ -127,6 +127,9 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
   const handleDelete = async (id) => {
     if (loading[id]) return;
     setLoading((prev) => ({ ...prev, [id]: 'delete' }));
+    // Optimistically remove appointment from local state
+    const previousAppointments = localAppointments;
+    setLocalAppointments((prev) => prev.filter((appt) => appt._id !== id));
     try {
       if (!(await validateAppointment(id))) return;
       if (window.confirm('Are you sure you want to delete this appointment?')) {
@@ -134,17 +137,21 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
         await axios.delete(`${API_URL}/appointments/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        effectiveFetchAppointments();
         alert('Appointment deleted successfully.');
+      } else {
+        // Revert optimistic update if user cancels
+        setLocalAppointments(previousAppointments);
       }
     } catch (err) {
       console.error('Error deleting appointment:', err);
+      // Revert optimistic update on error
+      setLocalAppointments(previousAppointments);
       if (err.response?.status === 404) {
         alert('Appointment not found. It may have been deleted already.');
       } else {
         alert('Failed to delete appointment: ' + (err.message || 'Unknown error'));
       }
-      effectiveFetchAppointments();
+      await localFetchAppointments(); // Fallback to sync state
     } finally {
       setLoading((prev) => ({ ...prev, [id]: null }));
     }
@@ -171,26 +178,39 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
   const handleEditSubmit = async (id) => {
     if (loading[id]) return;
     setLoading((prev) => ({ ...prev, [id]: 'edit' }));
+    // Optimistically update appointment in local state
+    const previousAppointments = localAppointments;
+    setLocalAppointments((prev) =>
+      prev.map((appt) =>
+        appt._id === id ? { ...appt, ...editForm } : appt
+      )
+    );
     try {
       if (!(await validateAppointment(id))) return;
       const token = localStorage.getItem('adminToken');
-      await axios.put(
+      const response = await axios.put(
         `${API_URL}/appointments/${id}`,
         editForm,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      setLocalAppointments((prev) =>
+        prev.map((appt) =>
+          appt._id === id ? response.data : appt
+        )
+      );
       setEditingId(null);
       setEditForm({});
-      effectiveFetchAppointments();
       alert('Appointment updated successfully.');
     } catch (err) {
       console.error('Error updating appointment:', err);
+      // Revert optimistic update on error
+      setLocalAppointments(previousAppointments);
       if (err.response?.status === 404) {
         alert('Appointment not found. It may have been deleted.');
       } else {
         alert('Failed to update appointment: ' + (err.message || 'Unknown error'));
       }
-      effectiveFetchAppointments();
+      await localFetchAppointments(); // Fallback to sync state
     } finally {
       setLoading((prev) => ({ ...prev, [id]: null }));
     }
@@ -199,24 +219,37 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
   const handleToggleAttempted = async (id, currentStatus) => {
     if (loading[id]) return;
     setLoading((prev) => ({ ...prev, [id]: 'toggle' }));
+    // Optimistically update attempted status in local state
+    const previousAppointments = localAppointments;
+    setLocalAppointments((prev) =>
+      prev.map((appt) =>
+        appt._id === id ? { ...appt, attempted: !currentStatus } : appt
+      )
+    );
     try {
       if (!(await validateAppointment(id))) return;
       const token = localStorage.getItem('adminToken');
-      await axios.patch(
+      const response = await axios.patch(
         `${API_URL}/appointments/${id}/attempted`,
         { attempted: !currentStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      effectiveFetchAppointments();
+      setLocalAppointments((prev) =>
+        prev.map((appt) =>
+          appt._id === id ? response.data : appt
+        )
+      );
       alert('Attempted status updated successfully.');
     } catch (err) {
       console.error('Error updating attempted status:', err);
+      // Revert optimistic update on error
+      setLocalAppointments(previousAppointments);
       if (err.response?.status === 404) {
         alert('Appointment not found. It may have been deleted.');
       } else {
         alert('Failed to update attempted status: ' + (err.message || 'Unknown error'));
       }
-      effectiveFetchAppointments();
+      await localFetchAppointments(); // Fallback to sync state
     } finally {
       setLoading((prev) => ({ ...prev, [id]: null }));
     }
@@ -231,108 +264,131 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
         <div className="appointment-grid">
           {appointments.map((appointment) => (
             <div key={appointment._id} className={`appointment-card ${cardClass}`}>
+              <div className="card-actions">
+                <button
+                  onClick={() => handleEdit(appointment)}
+                  className="action-button edit-button"
+                  title="Edit Appointment"
+                  disabled={loading[appointment._id]}
+                >
+                  <span role="img" aria-label="Edit">✏️</span>
+                </button>
+                <button
+                  onClick={() => handleDelete(appointment._id)}
+                  className="action-button delete-button"
+                  title="Delete Appointment"
+                  disabled={loading[appointment._id] === 'delete'}
+                >
+                  {loading[appointment._id] === 'delete' ? 'Deleting...' : <span role="img" aria-label="Delete">🗑️</span>}
+                </button>
+                {cardClass === 'today-card' && (
+                  <input
+                    type="checkbox"
+                    checked={appointment.attempted}
+                    onChange={() => handleToggleAttempted(appointment._id, appointment.attempted)}
+                    className={`attempt-checkbox ${appointment.attempted ? 'attempted' : 'not-attempted'}`}
+                    title={appointment.attempted ? 'Mark as Not Attempted' : 'Mark as Attempted'}
+                    disabled={loading[appointment._id] === 'toggle'}
+                  />
+                )}
+              </div>
               {editingId === appointment._id ? (
-                <div className="edit-form">
-                  <input
-                    type="text"
-                    name="name"
-                    value={editForm.name}
-                    onChange={handleEditChange}
-                    placeholder="Name"
-                    className="edit-input"
-                  />
-                  <input
-                    type="email"
-                    name="email"
-                    value={editForm.email}
-                    onChange={handleEditChange}
-                    placeholder="Email"
-                    className="edit-input"
-                  />
-                  <input
-                    type="text"
-                    name="contactNumber"
-                    value={editForm.contactNumber}
-                    onChange={handleEditChange}
-                    placeholder="Contact Number"
-                    className="edit-input"
-                  />
-                  <input
-                    type="text"
-                    name="area"
-                    value={editForm.area}
-                    onChange={handleEditChange}
-                    placeholder="Area"
-                    className="edit-input"
-                  />
-                  <input
-                    type="date"
-                    name="date"
-                    value={editForm.date}
-                    onChange={handleEditChange}
-                    className="edit-input"
-                  />
-                  <input
-                    type="time"
-                    name="time"
-                    value={editForm.time}
-                    onChange={handleEditChange}
-                    className="edit-input"
-                  />
-                  <textarea
-                    name="remark"
-                    value={editForm.remark}
-                    onChange={handleEditChange}
-                    placeholder="Remark"
-                    className="edit-textarea"
-                  />
-                  <div className="edit-actions">
+                <>
+                  <h4 className="card-title">
+                    <input
+                      type="text"
+                      name="name"
+                      value={editForm.name}
+                      onChange={handleEditChange}
+                      placeholder="Name"
+                      className="edit-input w-full"
+                    />
+                  </h4>
+                  <p className="card-detail">
+                    <strong>Email:</strong>{' '}
+                    <input
+                      type="email"
+                      name="email"
+                      value={editForm.email}
+                      onChange={handleEditChange}
+                      placeholder="Email"
+                      className="edit-input w-full"
+                    />
+                  </p>
+                  <p className="card-detail">
+                    <strong>Contact:</strong>{' '}
+                    <input
+                      type="text"
+                      name="contactNumber"
+                      value={editForm.contactNumber}
+                      onChange={handleEditChange}
+                      placeholder="Contact Number"
+                      className="edit-input w-full"
+                    />
+                  </p>
+                  <p className="card-detail">
+                    <strong>Area:</strong>{' '}
+                    <input
+                      type="text"
+                      name="area"
+                      value={editForm.area}
+                      onChange={handleEditChange}
+                      placeholder="Area"
+                      className="edit-input w-full"
+                    />
+                  </p>
+                  <p className="card-detail">
+                    <strong>Date:</strong>{' '}
+                    <input
+                      type="date"
+                      name="date"
+                      value={editForm.date}
+                      onChange={handleEditChange}
+                      className="edit-input w-full"
+                    />
+                  </p>
+                  <p className="card-detail">
+                    <strong>Time:</strong>{' '}
+                    <input
+                      type="time"
+                      name="time"
+                      value={editForm.time}
+                      onChange={handleEditChange}
+                      className="edit-input w-full"
+                    />
+                  </p>
+                  <p className="card-detail">
+                    <strong>Remark:</strong>{' '}
+                    <textarea
+                      name="remark"
+                      value={editForm.remark}
+                      onChange={handleEditChange}
+                      placeholder="Remark"
+                      className="edit-textarea w-full"
+                    />
+                  </p>
+                  <p className="card-detail">
+                    <strong>Status:</strong> {appointment.attempted ? 'Attempted' : 'Not Attempted'}
+                  </p>
+                  <div className="edit-actions flex space-x-2 mt-2">
                     <button
                       onClick={() => handleEditSubmit(appointment._id)}
-                      className="action-button save-button"
+                      className="action-button bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
                       disabled={loading[appointment._id] === 'edit'}
                     >
                       {loading[appointment._id] === 'edit' ? 'Saving...' : 'Save'}
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
-                      className="action-button cancel-button"
+                      className="action-button bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
                       disabled={loading[appointment._id] === 'edit'}
                     >
                       Cancel
                     </button>
                   </div>
-                </div>
+                </>
               ) : (
                 <>
-                  <div className="card-actions">
-                    <button
-                      onClick={() => handleEdit(appointment)}
-                      className="action-button edit-button"
-                      title="Edit Appointment"
-                      disabled={loading[appointment._id]}
-                    >
-                      <span role="img" aria-label="Edit">✏️</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(appointment._id)}
-                      className="action-button delete-button"
-                      title="Delete Appointment"
-                      disabled={loading[appointment._id] === 'delete'}
-                    >
-                      {loading[appointment._id] === 'delete' ? 'Deleting...' : <span role="img" aria-label="Delete">🗑️</span>}
-                    </button>
-                    {cardClass === 'today-card' && (
-                      <input
-                        type="checkbox"
-                        checked={appointment.attempted}
-                        onChange={() => handleToggleAttempted(appointment._id, appointment.attempted)}
-                        className={`attempt-checkbox ${appointment.attempted ? 'attempted' : 'not-attempted'}`}
-                        title={appointment.attempted ? 'Mark as Not Attempted' : 'Mark as Attempted'}
-                        disabled={loading[appointment._id] === 'toggle'}
-                      />
-                    )}
-                  </div>
                   <h4 className="card-title">{appointment.name}</h4>
                   <p className="card-detail"><strong>Email:</strong> {appointment.email}</p>
                   <p className="card-detail"><strong>Contact:</strong> {appointment.contactNumber}</p>
@@ -365,8 +421,8 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
       </div>
 
       {renderSection(todayAppointments, "Today's", 'today-card')}
-      {renderSection(futureAppointments, 'Future', 'future-card')}
-      {renderSection(completedAppointments, 'Completed', 'completed-card')}
+      {renderSection(futureAppointments, "Future", 'future-card')}
+      {renderSection(completedAppointments, "Completed", 'completed-card')}
     </div>
   );
 }

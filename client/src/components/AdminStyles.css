@@ -158,7 +158,7 @@
   display: flex;
   flex-direction: column;
   min-height: 200px;
-  position: relative; /* For absolute positioning of card-actions */
+  position: relative;
 }
 
 .today-card {
@@ -184,6 +184,13 @@
   font-size: 0.875rem;
   color: #4b5563;
   margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-detail strong {
+  min-width: 80px; /* Ensure consistent label width for alignment */
 }
 
 .card-actions {
@@ -206,6 +213,27 @@
   transition: background-color 0.2s ease;
 }
 
+.edit-input, .edit-textarea {
+  border: 1px solid #d1d5db; /* Light border */
+  padding: 2px 4px;
+  font-size: 0.875rem;
+  background: transparent; /* Transparent background to show card color */
+  color: #4b5563;
+  flex: 1; /* Take remaining space */
+  border-radius: 4px;
+}
+
+.edit-textarea {
+  resize: vertical;
+  min-height: 50px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  justify-content: flex-start;
+}
 
 /* Responsive table (retained for compatibility, not used in card layout) */
 .admin-panel table {
@@ -289,6 +317,4 @@
   .right-link:hover {
       color: #2563eb;
   }
-
-  
 }
