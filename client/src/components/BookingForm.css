@@ -1,0 +1,151 @@
+.booking-form-container {
+  width: 90%;
+  max-width: 500px;
+  margin: 20px auto;
+  background-color: #ffffff;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+}
+
+.booking-form-container h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.booking-form-container form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.booking-form-container label {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.booking-form-container input,
+.booking-form-container select,
+.booking-form-container textarea {
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 14px;
+}
+
+.booking-form-container .custom-select {
+  width: 319px;
+  height: 38px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.booking-form-container .custom-textarea {
+  width: 319px;
+  min-height: 80px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.booking-form-container .error {
+  color: #e53e3e;
+  font-size: 14px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.booking-form-container .success {
+  color: #38a169;
+  font-size: 14px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.booking-form-container button {
+  padding: 12px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 16px;
+  transition: background-color 0.2s ease;
+}
+
+.booking-form-container button:hover {
+  background-color: #2563eb;
+}
+
+.booking-form-container .whatsapp-link {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.booking-form-container .whatsapp-link a {
+  display: inline-block;
+  padding: 12px 18px;
+  background-color: #22c55e;
+  color: white;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.booking-form-container .whatsapp-link a:hover {
+  background-color: #16a34a;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+  .booking-form-container {
+    padding: 16px;
+    border-radius: 10px;
+  }
+
+  .booking-form-container h2 {
+    font-size: 20px;
+  }
+
+  .booking-form-container input,
+  .booking-form-container select,
+  .booking-form-container textarea,
+  .booking-form-container .custom-select,
+  .booking-form-container .custom-textarea {
+    width: 100%;
+    max-width: 319px;
+  }
+
+  .booking-form-container .custom-select {
+    height: 38px;
+    padding: 10px;
+  }
+
+  .booking-form-container .custom-textarea {
+    min-height: 80px;
+    padding: 10px;
+  }
+
+  .booking-form-container button,
+  .booking-form-container .whatsapp-link a {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  
+}
