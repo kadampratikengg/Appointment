@@ -24,7 +24,7 @@ function AdminPanel({ appointments, onCreateUser, fetchAppointments }) {
       const response = await axios.get(`${API_URL}/appointments`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('Fetched appointments:', response.data); // Debug log
+      // console.log('Fetched appointments:', response.data); // Debug log
       setLocalAppointments(response.data); // Update local state with fetched data
     } catch (err) {
       console.error('Error fetching appointments:', err);
