@@ -13,7 +13,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors());
+// app.use(cors());
 app.use(cors({
   origin: 'https://appointment-eight-zeta.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
