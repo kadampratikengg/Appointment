@@ -17,6 +17,7 @@ app.use(cors());
 app.use(cors({
   origin: 'https://appointment-eight-zeta.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 app.use(express.json());
