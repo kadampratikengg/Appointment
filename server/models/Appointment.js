@@ -16,9 +16,19 @@ const appointmentSchema = new mongoose.Schema({
   },
   area: { type: String, required: [true, 'Area is required'], trim: true },
   date: { type: String, required: [true, 'Date is required'], trim: true },
-  time: { type: String, required: [true, 'Time is required'], trim: true },
+  time: { type: [String], required: [true, 'At least one time slot is required'], validate: {
+    validator: function(v) {
+      return v.length > 0;
+    },
+    message: 'At least one time slot is required'
+  }},
   remark: { type: String, trim: true },
-  attempted: { type: Boolean, default: false } // Added attempted field
+  razorpayOrderId: { type: String },
+  razorpayPaymentId: { type: String },
+  paymentStatus: { type: String, default: 'pending' },
+  attempted: { type: Boolean, default: false }
 }, { timestamps: true });
+
+appointmentSchema.index({ date: 1, time: 1 });
 
 module.exports = mongoose.model('Appointment', appointmentSchema);

@@ -1,30 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const Appointment = require('../models/Appointment');
-const jwt = require('jsonwebtoken');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
 
-console.log('Appointment model:', Appointment);
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) {
-    console.log('No token provided in request');
-    return res.status(401).json({ error: 'Access denied' });
-  }
-
-  try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = verified;
-    next();
-  } catch (err) {
-    console.error('Token verification failed:', err.message);
-    res.status(403).json({ error: 'Invalid token' });
-  }
-};
-
-// Add GET /:id route to check appointment existence
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const appointment = await Appointment.findById(req.params.id);
     if (!appointment) {
@@ -39,6 +24,77 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+router.post('/create-order', async (req, res) => {
+  try {
+    const { amount, currency, slots, date } = req.body;
+    if (!amount || !currency || !slots || !date) {
+      return res.status(400).json({ error: 'Required fields are missing' });
+    }
+
+    const existingAppointments = await Appointment.find({ 
+      date, 
+      time: { $in: slots },
+      paymentStatus: 'completed' 
+    });
+    if (existingAppointments.length > 0) {
+      console.log(`One or more slots already booked for date: ${date}, slots: ${slots}`);
+      return res.status(400).json({ error: 'One or more time slots are already booked' });
+    }
+
+    const options = {
+      amount,
+      currency,
+      receipt: `receipt_${Date.now()}`,
+    };
+    const order = await razorpay.orders.create(options);
+    res.json({ orderId: order.id });
+  } catch (err) {
+    console.error('Error creating Razorpay order:', err);
+    res.status(500).json({ error: err.message || 'Failed to create order' });
+  }
+});
+
+router.post('/verify-payment', async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, formData } = req.body;
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !formData) {
+      return res.status(400).json({ error: 'Required payment details are missing' });
+    }
+
+    const generatedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({ error: 'Invalid payment signature' });
+    }
+
+    const existingAppointments = await Appointment.find({ 
+      date: formData.date, 
+      time: { $in: formData.time },
+      paymentStatus: 'completed' 
+    });
+    if (existingAppointments.length > 0) {
+      console.log(`One or more slots already booked for date: ${formData.date}, slots: ${formData.time}`);
+      return res.status(400).json({ error: 'One or more time slots are already booked' });
+    }
+
+    const appointment = new Appointment({
+      ...formData,
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      paymentStatus: 'completed',
+    });
+    await appointment.save();
+    console.log('Appointment saved:', appointment);
+    res.status(201).json(appointment);
+  } catch (err) {
+    console.error('Error verifying payment:', err);
+    res.status(500).json({ error: err.message || 'Failed to verify payment' });
+  }
+});
+
 router.post('/', async (req, res) => {
   try {
     console.log('Received POST /api/appointments with body:', req.body);
@@ -46,7 +102,26 @@ router.post('/', async (req, res) => {
     if (!name || !email || !contactNumber || !area || !date || !time) {
       return res.status(400).json({ error: 'Required fields are missing' });
     }
-    const appointment = new Appointment({ name, email, contactNumber, area, date, time, remark });
+
+    const existingAppointments = await Appointment.find({ 
+      date, 
+      time: { $in: Array.isArray(time) ? time : [time] },
+      paymentStatus: 'completed' 
+    });
+    if (existingAppointments.length > 0) {
+      console.log(`One or more slots already booked for date: ${date}, time: ${time}`);
+      return res.status(400).json({ error: 'One or more time slots are already booked' });
+    }
+
+    const appointment = new Appointment({ 
+      name, 
+      email, 
+      contactNumber, 
+      area, 
+      date, 
+      time: Array.isArray(time) ? time : [time], 
+      remark 
+    });
     console.log('Appointment instance created:', appointment);
     await appointment.save();
     console.log('Appointment saved:', appointment);
@@ -57,26 +132,54 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const appointments = await Appointment.find();
-    console.log(`Fetched ${appointments.length} appointments`);
-    res.json(appointments);
+    const { date } = req.query;
+    if (date) {
+      const appointments = await Appointment.find({ date, paymentStatus: 'completed' }).select('time');
+      const bookedTimes = appointments.reduce((acc, appointment) => [...acc, ...appointment.time], []);
+      console.log(`Fetched ${bookedTimes.length} booked times for date: ${date}`);
+      res.json(bookedTimes);
+    } else {
+      const appointments = await Appointment.find();
+      console.log(`Fetched ${appointments.length} appointments`);
+      res.json(appointments);
+    }
   } catch (err) {
     console.error('Error fetching appointments:', err);
     res.status(500).json({ error: err.message || 'Failed to fetch appointments' });
   }
 });
 
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { name, email, contactNumber, area, date, time, remark } = req.body;
     if (!name || !email || !contactNumber || !area || !date || !time) {
       return res.status(400).json({ error: 'Required fields are missing' });
     }
+
+    const existingAppointments = await Appointment.find({
+      date,
+      time: { $in: Array.isArray(time) ? time : [time] },
+      _id: { $ne: req.params.id },
+      paymentStatus: 'completed'
+    });
+    if (existingAppointments.length > 0) {
+      console.log(`One or more slots already booked for date: ${date}, time: ${time}`);
+      return res.status(400).json({ error: 'One or more time slots are already booked' });
+    }
+
     const appointment = await Appointment.findByIdAndUpdate(
       req.params.id,
-      { name, email, contactNumber, area, date, time, remark },
+      { 
+        name, 
+        email, 
+        contactNumber, 
+        area, 
+        date, 
+        time: Array.isArray(time) ? time : [time], 
+        remark 
+      },
       { new: true, runValidators: true }
     );
     if (!appointment) {
@@ -91,7 +194,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-router.patch('/:id/attempted', authenticateToken, async (req, res) => {
+router.patch('/:id/attempted', async (req, res) => {
   try {
     const { attempted } = req.body;
     if (typeof attempted !== 'boolean') {
@@ -114,7 +217,7 @@ router.patch('/:id/attempted', authenticateToken, async (req, res) => {
   }
 });
 
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const appointment = await Appointment.findByIdAndDelete(req.params.id);
     if (!appointment) {
@@ -129,5 +232,4 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-console.log('Exporting router:', router);
 module.exports = router;

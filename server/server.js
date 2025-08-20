@@ -4,28 +4,31 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const appointmentRoutes = require('./routes/appointments');
 const adminRoutes = require('./routes/admin');
-const authRoutes = require('./routes/auth');
 
 const app = express();
 
+// Configure CORS to allow requests from the frontend
+app.use(cors({
+  origin: process.env.REACT_APP_FRONTEND_URL || 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Request logging middleware
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
-app.use(cors());
-// app.use(cors({
-//   origin: 'https://appointment-eight-zeta.vercel.app',
-//   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-//   allowedHeaders: ['Content-Type', 'Authorization'],
-// }));
-
 app.use(express.json());
 
+// Mount appointment routes
 app.use('/api/appointments', appointmentRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/auth', authRoutes);
 
+// Mount admin routes
+app.use('/api/admin', adminRoutes);
+
+// Health check endpoint
 app.get('/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
   res.status(200).json({
@@ -34,20 +37,26 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Handle 404 for unknown routes
 app.use((req, res, next) => {
+  console.log(`Route not found: ${req.method} ${req.url}`);
   res.status(404).json({ error: 'Route not found' });
 });
 
+// Global error handler
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// MongoDB connection
 console.log('MONGO_URI:', process.env.MONGO_URI);
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGO_URI, { 
+  useNewUrlParser: true, 
+  useUnifiedTopology: true 
+})
   .then(async () => {
     console.log('Connected to MongoDB');
-    // Verify collection exists
     const collections = await mongoose.connection.db.listCollections().toArray();
     const appointmentCollection = collections.find(col => col.name === 'appointments');
     console.log('Appointments collection exists:', !!appointmentCollection);
