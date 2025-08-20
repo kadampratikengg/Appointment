@@ -1,6 +1,6 @@
 .booking-form-container {
   width: 90%;
-  max-width: 500px;
+  max-width: 600px;
   margin: 20px auto;
   background-color: #ffffff;
   padding: 24px;
@@ -68,6 +68,7 @@
   font-size: 14px;
   margin-bottom: 10px;
   text-align: center;
+  font-weight: bold;
 }
 
 .booking-form-container .success {
@@ -75,6 +76,7 @@
   font-size: 14px;
   margin-bottom: 10px;
   text-align: center;
+  z-index: 1000;
 }
 
 .booking-form-container button {
@@ -150,6 +152,96 @@
   cursor: not-allowed;
 }
 
+/* Modal and card styles */
+.modal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.appointment-card {
+  border: 1px solid #e5e7eb;
+  padding: 1rem;
+  border-radius: 6px;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.today-card {
+  border-left: 4px solid #3b82f6;
+}
+
+.card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.card-detail {
+  margin-bottom: 0.5rem;
+  font-size: 14px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.action-button.download {
+  background-color: #3b82f6;
+}
+
+.action-button.download:hover {
+  background-color: #2563eb;
+}
+
+.action-button.close {
+  background-color: #e53e3e;
+}
+
+.action-button.close:hover {
+  background-color: #dc2626;
+}
+
+.action-button img {
+  display: inline-block;
+  vertical-align: middle;
+  width: 24px;
+  height: 24px;
+}
+
 /* Responsive Design */
 @media (max-width: 600px) {
   .booking-form-container {
@@ -193,5 +285,32 @@
   .booking-form-container .time-slot {
     padding: 8px;
     font-size: 12px;
+  }
+
+  .modal-content {
+    padding: 1rem;
+    width: 95%;
+  }
+
+  .appointment-card {
+    padding: 0.75rem;
+  }
+
+  .card-title {
+    font-size: 1.1rem;
+  }
+
+  .card-detail {
+    font-size: 12px;
+  }
+
+  .action-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .action-button img {
+    width: 20px;
+    height: 20px;
   }
 }

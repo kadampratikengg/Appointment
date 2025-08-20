@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import jsPDF from 'jspdf';
 import './BookingForm.css';
+import initiatePayment from './RazorpayPayment';
+
+// Local logo path (adjust if needed)
+const LOGO_URL = '/assets/logo.png';
 
 function BookingForm() {
   const [formData, setFormData] = useState({
@@ -15,9 +20,26 @@ function BookingForm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [bookedSlots, setBookedSlots] = useState([]);
+  const [showBookingCard, setShowBookingCard] = useState(false);
+  const [bookingDetails, setBookingDetails] = useState(null);
+
+  // Get current system date and time in IST
+  const now = new Date();
+  // Adjust for IST (UTC+5:30)
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const currentIST = new Date(now.getTime() + istOffset);
+  const currentDate = currentIST.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+  const currentHours = currentIST.getHours(); // e.g., 18 (6 PM)
+  const currentMinutes = currentIST.getMinutes(); // e.g., 18
 
   const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'date' && value < currentDate) {
+      setError('Cannot select a past date.');
+      return;
+    }
+    setFormData((prev) => ({ ...prev, [name]: value, time: name === 'date' ? [] : prev.time }));
+    setError('');
   };
 
   const handleTimeSelect = (time) => {
@@ -35,20 +57,18 @@ function BookingForm() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    E.preventDefault();
     if (formData.time.length === 0) {
       setError('Please select at least one time slot.');
       return;
     }
     try {
-      // Step 1: Create Razorpay order
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-      console.log('API URL for create-order:', `${apiUrl}/appointments/create-order`);
       const slotPrice = parseInt(process.env.REACT_APP_SLOT_PRICE) || 20;
       const orderResponse = await axios.post(
         `${apiUrl}/appointments/create-order`,
         {
-          amount: formData.time.length * slotPrice * 100, // Convert to paise
+          amount: formData.time.length * slotPrice * 100,
           currency: 'INR',
           slots: formData.time,
           date: formData.date,
@@ -62,72 +82,47 @@ function BookingForm() {
       console.log('Order Response:', orderResponse.data);
       const { orderId } = orderResponse.data;
 
-      // Step 2: Initialize Razorpay payment
-      if (!window.Razorpay) {
-        setError('Razorpay SDK not loaded. Please check your internet connection and try again.');
-        return;
-      }
-      const options = {
-        key: process.env.REACT_APP_RAZORPAY_KEY,
-        amount: formData.time.length * slotPrice * 100, // Convert to paise
-        currency: 'INR',
-        name: 'Appointment Booking',
-        description: `Booking for ${formData.time.length} slot(s)`,
-        order_id: orderId,
-        handler: async (response) => {
-          try {
-            // Step 3: Verify payment and book appointment
-            console.log('Payment Response:', response);
-            const verifyUrl = `${apiUrl}/appointments/verify-payment`;
-            const bookingResponse = await axios.post(
-              verifyUrl,
-              {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                formData,
-              },
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-              }
-            );
-            console.log('Booking Response:', bookingResponse.data);
-            setSuccess('Appointment booked successfully!');
-            setBookedSlots([...bookedSlots, ...formData.time]);
-            setFormData({
-              name: '',
-              email: '',
-              contactNumber: '',
-              area: '',
-              date: '',
-              time: [],
-              remark: '',
-            });
-            setError('');
-          } catch (err) {
-            console.error('Payment verification error:', err.response || err.message);
-            setError('Payment verification failed. Please contact support.');
-            setSuccess('');
-          }
+      const result = await initiatePayment({
+        orderId,
+        amount: formData.time.length * slotPrice * 100,
+        formData,
+        apiUrl,
+        onSuccess: (bookingResponse) => {
+          setSuccess('Appointment booked successfully!');
+          setBookingDetails({
+            ...formData,
+            _id: bookingResponse.data._id || `temp-${Date.now()}`,
+            time: formData.time
+              .map((t) => {
+                const [hour, minute] = t.split(':').map(Number);
+                const isPM = hour >= 12;
+                const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+                return `${displayHour}:${minute.toString().padStart(2, '0')} ${isPM ? 'PM' : 'AM'}`;
+              })
+              .join(', '),
+            attempted: false,
+          });
+          setShowBookingCard(true);
+          setBookedSlots([...bookedSlots, ...formData.time]);
+          setFormData({
+            name: '',
+            email: '',
+            contactNumber: '',
+            area: '',
+            date: '',
+            time: [],
+            remark: '',
+          });
+          setError('');
         },
-        prefill: {
-          name: formData.name,
-          email: formData.email,
-          contact: formData.contactNumber,
+        onError: (errorMessage) => {
+          setError(errorMessage);
+          setSuccess('');
         },
-        theme: {
-          color: '#3399cc',
-        },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', (response) => {
-        console.error('Payment failed:', response.error);
-        setError(`Payment failed: ${response.error.description}`);
       });
-      rzp.open();
+      if (!result) {
+        setError('Failed to initiate payment. Please try again.');
+      }
     } catch (err) {
       console.error('Error initiating payment:', err.response || err.message);
       const errorMessage =
@@ -176,17 +171,78 @@ function BookingForm() {
     }
   }, [success]);
 
-  const timeOptions = [];
-  for (let hour = 8; hour <= 18; hour++) {
-    for (let minute = 0; minute < 60; minute += 10) {
-      if (hour === 18 && minute > 30) break;
-      const isPM = hour >= 12;
-      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      const displayTime = `${displayHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} ${isPM ? 'PM' : 'AM'}`;
-      const valueTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      timeOptions.push({ value: valueTime, label: displayTime });
+  const timeOptions = useMemo(() => {
+    console.log('Generating time options for date:', formData.date);
+    const options = [];
+    if (!formData.date) return options;
+
+    for (let hour = 8; hour <= 18; hour++) {
+      for (let minute = 0; minute < 60; minute += 10) {
+        if (hour === 18 && minute > 30) break;
+        const isPM = hour >= 12;
+        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+        const displayTime = `${displayHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} ${isPM ? 'PM' : 'AM'}`;
+        const valueTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        // Include time slots based on date
+        if (formData.date === currentDate) {
+          // For today (August 20, 2025), show slots after current time (6:18 PM IST)
+          if (hour > currentHours || (hour === currentHours && minute > currentMinutes)) {
+            options.push({ value: valueTime, label: displayTime });
+          }
+        } else if (formData.date > currentDate) {
+          // For future dates, show all slots
+          options.push({ value: valueTime, label: displayTime });
+        }
+      }
     }
-  }
+    console.log('Time options generated:', options);
+    return options;
+  }, [formData.date, currentHours, currentMinutes, currentDate]);
+
+  const downloadCardAsPDF = () => {
+    if (!bookingDetails) return;
+    const doc = new jsPDF();
+    // Add logo
+    const logoWidth = 30;
+    const logoHeight = 30;
+    try {
+      doc.addImage(LOGO_URL, 'PNG', 20, 10, logoWidth, logoHeight);
+    } catch (err) {
+      console.warn('Logo image failed to load:', err.message);
+      doc.setFontSize(12);
+      doc.text('Logo Unavailable', 20, 20);
+    }
+    // Header
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Appointment Confirmation', 20, 50);
+    // Details
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    const details = [
+      `Name: ${bookingDetails.name}`,
+      `Email: ${bookingDetails.email}`,
+      `Contact: ${bookingDetails.contactNumber}`,
+      `Area: ${bookingDetails.area}`,
+      `Date: ${bookingDetails.date}`,
+      `Time: ${bookingDetails.time}`,
+      `Remark: ${bookingDetails.remark || 'None'}`,
+      `Status: ${bookingDetails.attempted ? 'Attempted' : 'Not Attempted'}`,
+    ];
+    details.forEach((line, index) => {
+      doc.text(line, 20, 60 + index * 10);
+    });
+    // Footer
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text('Generated by Appointment Booking System', 20, 280);
+    doc.save(`appointment_${bookingDetails._id}.pdf`);
+  };
+
+  const closePopup = () => {
+    setShowBookingCard(false);
+    setBookingDetails(null);
+  };
 
   return (
     <div className='booking-form-container'>
@@ -195,6 +251,38 @@ function BookingForm() {
       {success && (
         <div className='success fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white p-4 rounded-md shadow-lg'>
           {success}
+        </div>
+      )}
+      {showBookingCard && bookingDetails && (
+        <div className='modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
+          <div className='modal-content bg-white rounded-lg shadow-lg p-6 max-w-md w-full'>
+            <div className='appointment-card today-card'>
+              <h4 className='card-title'>{bookingDetails.name}</h4>
+              <p className='card-detail'><strong>Email:</strong> {bookingDetails.email}</p>
+              <p className='card-detail'><strong>Contact:</strong> {bookingDetails.contactNumber}</p>
+              <p className='card-detail'><strong>Area:</strong> {bookingDetails.area}</p>
+              <p className='card-detail'><strong>Date:</strong> {bookingDetails.date}</p>
+              <p className='card-detail'><strong>Time:</strong> {bookingDetails.time}</p>
+              <p className='card-detail'><strong>Remark:</strong> {bookingDetails.remark || 'None'}</p>
+              <p className='card-detail'><strong>Status:</strong> {bookingDetails.attempted ? 'Attempted' : 'Not Attempted'}</p>
+              <div className='card-actions mt-4 flex space-x-2'>
+                <button
+                  onClick={downloadCardAsPDF}
+                  className='action-button bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center'
+                >
+                  <img src={LOGO_URL} alt='Download' className='w-5 h-5 mr-2' onError={(e) => (e.target.style.display = 'none')} />
+                  Download as PDF
+                </button>
+                <button
+                  onClick={closePopup}
+                  className='action-button bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 flex items-center'
+                >
+                  <img src={LOGO_URL} alt='Close' className='w-5 h-5 mr-2' onError={(e) => (e.target.style.display = 'none')} />
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
       <form onSubmit={handleSubmit} className='space-y-4'>
@@ -257,31 +345,40 @@ function BookingForm() {
             onChange={handleInputChange}
             className='w-full p-3 border border-gray-300 rounded-md'
             required
+            min={currentDate}
           />
         </div>
         <div>
           <label className='block text-sm font-medium'>Time Slots</label>
-          <div className='time-table-container'>
-            <table className='time-table'>
-              <tbody>
-                {Array.from({ length: Math.ceil(timeOptions.length / 4) }).map((_, rowIndex) => (
-                  <tr key={rowIndex}>
-                    {timeOptions.slice(rowIndex * 4, rowIndex * 4 + 4).map((option) => (
-                      <td
-                        key={option.value}
-                        className={`time-slot ${formData.time.includes(option.value) ? 'selected' : ''} ${
-                          bookedSlots.includes(option.value) ? 'booked' : ''
-                        }`}
-                        onClick={() => handleTimeSelect(option.value)}
-                      >
-                        {option.label}
-                      </td>
+          {formData.date ? (
+            timeOptions.length > 0 ? (
+              <div className='time-table-container'>
+                <table className='time-table'>
+                  <tbody>
+                    {Array.from({ length: Math.ceil(timeOptions.length / 4) }).map((_, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {timeOptions.slice(rowIndex * 4, rowIndex * 4 + 4).map((option) => (
+                          <td
+                            key={option.value}
+                            className={`time-slot ${formData.time.includes(option.value) ? 'selected' : ''} ${
+                              bookedSlots.includes(option.value) ? 'booked' : ''
+                            }`}
+                            onClick={() => handleTimeSelect(option.value)}
+                          >
+                            {option.label}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className='text-sm text-gray-500'>No available time slots for this date.</p>
+            )
+          ) : (
+            <p className='text-sm text-gray-500'>Please select a date to view available time slots.</p>
+          )}
         </div>
         <div>
           <label className='block text-sm font-medium'>Remark</label>
